@@ -1,0 +1,43 @@
+services:
+  backend:
+    build:
+      context: ./backend
+    restart: unless-stopped
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DATABASE_URL: sqlite:////opt/candyvault/database/candyvault.db
+      UPLOAD_DIR: /opt/candyvault/uploads
+      BACKUP_DIR: /opt/candyvault/backups
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-25}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173}
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - candyvault_database:/opt/candyvault/database
+      - candyvault_uploads:/opt/candyvault/uploads
+      - candyvault_backups:/opt/candyvault/backups
+      - candyvault_logs:/opt/candyvault/logs
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/system/status', timeout=4)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://127.0.0.1:8000}
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+
+volumes:
+  candyvault_database:
+  candyvault_uploads:
+  candyvault_backups:
+  candyvault_logs:

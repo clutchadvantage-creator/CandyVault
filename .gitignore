@@ -1,0 +1,46 @@
+# Environment files
+.env
+*.env
+!.env.example
+!.env.candyserver.example
+!backend/.env.example
+!frontend/.env.example
+
+# Python
+backend/.venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Node / React
+frontend/node_modules/
+node_modules/
+frontend/dist/
+dist/
+
+# Uploads and backups
+uploads/*
+!uploads/.gitkeep
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/backups/*
+!backend/backups/.gitkeep
+backups/*
+database/*
+logs/*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Docker local junk
+*.log
