@@ -3,12 +3,19 @@ from decimal import Decimal
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import case, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Expense
-from app.schemas import ExpenseCreate, ExpenseRead, ExpenseSummary, ExpenseUpdate
+from app.schemas import (
+    ExpenseCategorySummary,
+    ExpenseCategoryTotal,
+    ExpenseCreate,
+    ExpenseRead,
+    ExpenseSummary,
+    ExpenseUpdate,
+)
 
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
@@ -20,6 +27,29 @@ RECURRING_MONTHLY_MULTIPLIERS = {
     "quarterly": Decimal("4") / Decimal("12"),
     "yearly": Decimal("1") / Decimal("12"),
 }
+
+STANDARD_CATEGORIES = (
+    "Housing",
+    "Food",
+    "Transportation",
+    "Utilities",
+    "Debt",
+    "Insurance",
+    "Medical",
+    "Entertainment",
+    "Household",
+    "Personal",
+    "Savings",
+    "Other",
+)
+
+
+def next_calendar_month(month_start: date) -> date:
+    return (
+        month_start.replace(year=month_start.year + 1, month=1)
+        if month_start.month == 12
+        else month_start.replace(month=month_start.month + 1)
+    )
 
 def get_expense_or_404(expense_id: int, db: Session) -> Expense:
     expense = db.get(Expense, expense_id)
@@ -126,6 +156,94 @@ def get_expense_summary(db: Session = Depends(get_db)) -> ExpenseSummary:
         monthly_total=Decimal(monthly_total or 0),
         recurring_expense_count=len(recurring_expenses),
         estimated_monthly_recurring_total=estimated_monthly_recurring_total,
+    )
+
+
+@router.get("/category-summary", response_model=ExpenseCategorySummary)
+def get_expense_category_summary(
+    month: Annotated[int | None, Query(ge=1, le=12)] = None,
+    year: Annotated[int | None, Query(ge=1, le=9999)] = None,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    db: Session = Depends(get_db),
+) -> ExpenseCategorySummary:
+    has_month_period = month is not None or year is not None
+    has_custom_period = start_date is not None or end_date is not None
+
+    if has_month_period and has_custom_period:
+        raise HTTPException(
+            status_code=422,
+            detail="Use either month/year or start_date/end_date, not both.",
+        )
+    if has_month_period and (month is None or year is None):
+        raise HTTPException(status_code=422, detail="month and year must be provided together.")
+    if has_custom_period and (start_date is None or end_date is None):
+        raise HTTPException(
+            status_code=422,
+            detail="start_date and end_date must be provided together.",
+        )
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="start_date must be on or before end_date.")
+
+    response_month: int | None = None
+    response_year: int | None = None
+    if start_date is not None and end_date is not None:
+        period_start = start_date
+        period_end_exclusive = end_date + timedelta(days=1)
+    else:
+        today = date.today()
+        response_month = month if month is not None else today.month
+        response_year = year if year is not None else today.year
+        period_start = date(response_year, response_month, 1)
+        period_end_exclusive = next_calendar_month(period_start)
+
+    trimmed_category = func.trim(Expense.category)
+    lowered_category = func.lower(trimmed_category)
+    normalized_category = case(
+        (or_(Expense.category.is_(None), trimmed_category == ""), "Other"),
+        *(
+            (lowered_category == label.lower(), label)
+            for label in STANDARD_CATEGORIES
+        ),
+        else_=trimmed_category,
+    ).label("category")
+
+    rows = db.execute(
+        select(
+            normalized_category,
+            func.coalesce(func.sum(Expense.amount), 0).label("total_amount"),
+            func.count(Expense.id).label("expense_count"),
+        )
+        .where(
+            Expense.expense_date >= period_start,
+            Expense.expense_date < period_end_exclusive,
+        )
+        .group_by(normalized_category)
+        .order_by(func.sum(Expense.amount).desc(), normalized_category.asc())
+    ).all()
+
+    total_expenses = sum((Decimal(row.total_amount) for row in rows), Decimal("0"))
+    category_totals = [
+        ExpenseCategoryTotal(
+            category=row.category,
+            total_amount=Decimal(row.total_amount),
+            expense_count=row.expense_count,
+            percentage_of_total=(
+                (Decimal(row.total_amount) / total_expenses * Decimal("100")).quantize(
+                    Decimal("0.01")
+                )
+                if total_expenses
+                else Decimal("0.00")
+            ),
+        )
+        for row in rows
+    ]
+
+    return ExpenseCategorySummary(
+        month=response_month,
+        year=response_year,
+        total_expenses=total_expenses,
+        categories=category_totals,
     )
 
 

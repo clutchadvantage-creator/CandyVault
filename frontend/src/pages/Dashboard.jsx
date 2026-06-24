@@ -6,6 +6,7 @@ import DashboardCharts from "../components/Dashboard/DashboardCharts.jsx";
 import DashboardHero from "../components/Dashboard/DashboardHero.jsx";
 import DashboardWidget from "../components/Dashboard/DashboardWidget.jsx";
 import MoneyFlowComparison from "../components/Dashboard/MoneyFlowComparison.jsx";
+import CategoryBreakdown from "../components/Expenses/CategoryBreakdown.jsx";
 
 const quotes = [
   "Every penny deserves a candy jar.",
@@ -49,6 +50,7 @@ function Dashboard() {
     estimated_monthly_recurring_total: 0,
   });
   const [documentSummary, setDocumentSummary] = useState({ total_documents: 0, total_storage_bytes: 0 });
+  const [categorySummary, setCategorySummary] = useState({ total_expenses: 0, categories: [] });
   const [documents, setDocuments] = useState([]);
   const [notes, setNotes] = useState([]);
   const [noteSummary, setNoteSummary] = useState({ total_notes: 0 });
@@ -73,6 +75,7 @@ function Dashboard() {
         noteResult,
         noteSummaryResult,
         paySummaryResult,
+        categorySummaryResult,
       ] = await Promise.allSettled([
         requestJson("/health", controller.signal),
         requestJson("/expenses", controller.signal),
@@ -82,6 +85,7 @@ function Dashboard() {
         requestJson("/notes", controller.signal),
         requestJson("/notes/summary", controller.signal),
         requestJson("/pay-profiles/summary", controller.signal),
+        requestJson("/expenses/category-summary", controller.signal),
       ]);
 
       if (controller.signal.aborted) return;
@@ -120,6 +124,10 @@ function Dashboard() {
         setPaySummary(paySummaryResult.value);
       }
 
+      if (categorySummaryResult.status === "fulfilled") {
+        setCategorySummary(categorySummaryResult.value);
+      }
+
       if (
         expenseResult.status === "rejected"
         || summaryResult.status === "rejected"
@@ -128,6 +136,7 @@ function Dashboard() {
         || noteResult.status === "rejected"
         || noteSummaryResult.status === "rejected"
         || paySummaryResult.status === "rejected"
+        || categorySummaryResult.status === "rejected"
       ) {
         setDataError("Some sweets are still loading from candyserver. Try refreshing in a moment.");
       }
@@ -242,6 +251,10 @@ function Dashboard() {
             <div><span>This month</span><strong>{formatCurrency(summary.monthly_total)}</strong></div>
             <div><span>Entries</span><strong>{summary.expense_count}</strong></div>
           </div>
+        </DashboardWidget>
+
+        <DashboardWidget title="Top Spending Categories" kicker="Current month" tone="blue">
+          <CategoryBreakdown summary={categorySummary} compact />
         </DashboardWidget>
 
         <DashboardWidget title="Backend Health" kicker="candyserver" tone="yellow">

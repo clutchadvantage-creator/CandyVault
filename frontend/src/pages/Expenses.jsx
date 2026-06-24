@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../api/client.js";
 import StatCard from "../components/Cards/StatCard.jsx";
+import CategoryBreakdown from "../components/Expenses/CategoryBreakdown.jsx";
 import FilterBar from "../components/Filters/FilterBar.jsx";
 import PageIntro from "../components/Header/PageIntro.jsx";
 import LinkedNotesPanel from "../components/Notes/LinkedNotesPanel.jsx";
 
-const categories = ["Housing", "Food", "Transportation", "Utilities", "Health", "Entertainment", "Other"];
+const categories = [
+  "Housing", "Food", "Transportation", "Utilities", "Debt", "Insurance", "Medical",
+  "Entertainment", "Household", "Personal", "Savings", "Other",
+];
 const defaultFilters = {
   search: "",
   category: "",
@@ -61,6 +65,7 @@ function Expenses() {
     estimated_monthly_recurring_total: 0,
   });
   const [paySummary, setPaySummary] = useState({ estimated_monthly_net_income: 0 });
+  const [categorySummary, setCategorySummary] = useState({ total_expenses: 0, categories: [] });
   const [form, setForm] = useState(emptyForm);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -84,20 +89,29 @@ function Expenses() {
     query.set("sort_by", sortBy);
     query.set("sort_dir", sortDir);
 
-    const [expensesResponse, summaryResponse, linkedNotesResponse, paySummaryResponse] = await Promise.all([
+    const categoryQuery = new URLSearchParams();
+    if (filters.start_date && filters.end_date) {
+      categoryQuery.set("start_date", filters.start_date);
+      categoryQuery.set("end_date", filters.end_date);
+    }
+    const categorySummaryPath = `/expenses/category-summary${categoryQuery.size ? `?${categoryQuery.toString()}` : ""}`;
+
+    const [expensesResponse, summaryResponse, categorySummaryResponse, linkedNotesResponse, paySummaryResponse] = await Promise.all([
       apiFetch(`/expenses?${query.toString()}`, { signal }),
       apiFetch("/expenses/summary", { signal }),
+      apiFetch(categorySummaryPath, { signal }),
       apiFetch("/notes?linked_type=expense", { signal }),
       apiFetch("/pay-profiles/summary", { signal }),
     ]);
 
-    if (!expensesResponse.ok || !summaryResponse.ok || !linkedNotesResponse.ok || !paySummaryResponse.ok) {
+    if (!expensesResponse.ok || !summaryResponse.ok || !categorySummaryResponse.ok || !linkedNotesResponse.ok || !paySummaryResponse.ok) {
       throw new Error("Expense data could not be loaded.");
     }
 
-    const [expenseData, summaryData, linkedNoteData, paySummaryData] = await Promise.all([
+    const [expenseData, summaryData, categorySummaryData, linkedNoteData, paySummaryData] = await Promise.all([
       expensesResponse.json(),
       summaryResponse.json(),
+      categorySummaryResponse.json(),
       linkedNotesResponse.json(),
       paySummaryResponse.json(),
     ]);
@@ -106,13 +120,14 @@ function Expenses() {
       throw new Error("The expense service returned an invalid response.");
     }
 
-    return { expenseData, summaryData, linkedNoteData, paySummaryData };
+    return { expenseData, summaryData, categorySummaryData, linkedNoteData, paySummaryData };
   }, [filters]);
 
-  const applyExpenseData = useCallback(({ expenseData, summaryData, linkedNoteData, paySummaryData }) => {
+  const applyExpenseData = useCallback(({ expenseData, summaryData, categorySummaryData, linkedNoteData, paySummaryData }) => {
     setExpenses(expenseData);
     setSummary(summaryData);
     setPaySummary(paySummaryData);
+    setCategorySummary(categorySummaryData);
     setLinkedNoteCounts(linkedNoteData.reduce((counts, note) => {
       counts[note.linked_id] = (counts[note.linked_id] || 0) + 1;
       return counts;
@@ -258,6 +273,9 @@ function Expenses() {
     filters.history_days !== defaultFilters.history_days ? "history-window" : "",
     filters.sort !== defaultFilters.sort ? filters.sort : "",
   ].filter(Boolean).length;
+  const categoryPeriodTitle = filters.start_date && filters.end_date
+    ? "Selected Date Range by Category"
+    : "Current Month by Category";
 
   return (
     <>
@@ -280,6 +298,8 @@ function Expenses() {
         <div><span>🧾 Money Out</span><strong>{formatCurrency(summary.monthly_total)}</strong></div>
         <div className={Number(paySummary.estimated_monthly_net_income) - Number(summary.monthly_total) < 0 ? "negative" : ""}><span>🍭 Candy Left in the Jar</span><strong>{formatCurrency(Number(paySummary.estimated_monthly_net_income) - Number(summary.monthly_total))}</strong></div>
       </section>
+
+      <CategoryBreakdown summary={categorySummary} title={categoryPeriodTitle} />
 
       <FilterBar activeCount={activeFilterCount} onClear={clearFilters}>
         <label className="filter-field filter-search-field">
@@ -352,10 +372,10 @@ function Expenses() {
 
             <label className="form-field">
               <span>Category</span>
-              <select name="category" value={form.category} onChange={updateField} required>
-                <option value="">Select a category</option>
-                {categories.map((category) => <option key={category} value={category}>{category}</option>)}
-              </select>
+              <input name="category" list="expense-category-options" value={form.category} onChange={updateField} maxLength="100" placeholder="Select or enter a category" required />
+              <datalist id="expense-category-options">
+                {categories.map((category) => <option key={category} value={category} />)}
+              </datalist>
             </label>
 
             <label className="form-field">

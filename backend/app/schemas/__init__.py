@@ -5,7 +5,14 @@ from app.schemas.document_folder import (
     DocumentFolderRead,
     DocumentFolderUpdate,
 )
-from app.schemas.expense import ExpenseCreate, ExpenseRead, ExpenseSummary, ExpenseUpdate
+from app.schemas.expense import (
+    ExpenseCategorySummary,
+    ExpenseCategoryTotal,
+    ExpenseCreate,
+    ExpenseRead,
+    ExpenseSummary,
+    ExpenseUpdate,
+)
 from app.schemas.note import NoteCreate, NoteRead, NoteSummary, NoteUpdate
 from app.schemas.pay_profile import (
     PayProfileCreate,
@@ -25,6 +32,8 @@ __all__ = [
     "DocumentFolderRead",
     "DocumentFolderUpdate",
     "ExpenseCreate",
+    "ExpenseCategorySummary",
+    "ExpenseCategoryTotal",
     "ExpenseRead",
     "ExpenseSummary",
     "ExpenseUpdate",

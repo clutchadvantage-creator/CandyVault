@@ -56,3 +56,17 @@ class ExpenseSummary(BaseModel):
     monthly_total: Decimal
     recurring_expense_count: int
     estimated_monthly_recurring_total: Decimal
+
+
+class ExpenseCategoryTotal(BaseModel):
+    category: str
+    total_amount: Decimal
+    expense_count: int
+    percentage_of_total: Decimal
+
+
+class ExpenseCategorySummary(BaseModel):
+    month: int | None
+    year: int | None
+    total_expenses: Decimal
+    categories: list[ExpenseCategoryTotal]
